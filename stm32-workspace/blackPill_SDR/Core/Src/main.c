@@ -25,6 +25,8 @@
 #include "arm_math.h"
 #include <stdbool.h>
 
+#include "filters.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,6 +38,7 @@
 /* USER CODE BEGIN PD */
 
 #define BUFFER_SIZE 128
+#define HILBERT_NUM_TAPS 128
 
 /* USER CODE END PD */
 
@@ -62,10 +65,13 @@ static volatile uint16_t* adc_process_ptr;
 static volatile uint16_t* dac_process_ptr;
 static volatile bool adc_process;
 
-
+arm_fir_instance_q15 filter1;
+q15_t filter1_state[(BUFFER_SIZE / 2) + HILBERT_NUM_TAPS - 1];
 q15_t filter1_in[BUFFER_SIZE / 2];
 q15_t filter1_out[BUFFER_SIZE / 2];
 
+arm_fir_instance_q15 filter2;
+q15_t filter2_state[(BUFFER_SIZE / 2) + HILBERT_NUM_TAPS - 1];
 q15_t filter2_in[BUFFER_SIZE / 2];
 q15_t filter2_out[BUFFER_SIZE / 2];
 
@@ -117,6 +123,9 @@ int main(void)
 
   //Resetting the flag for processing the ADC buffer
   adc_process = false;
+
+  arm_fir_init_q15(&filter1, HILBERT_NUM_TAPS, &hilbert_p_45_coeffs[0], &filter1_state[0], BUFFER_SIZE / 2);
+  arm_fir_init_q15(&filter2, HILBERT_NUM_TAPS, &hilbert_m_45_coeffs[0], &filter2_state[0], BUFFER_SIZE / 2);
 
   /* USER CODE END 1 */
 
@@ -515,10 +524,13 @@ void process_data()
 		filter2_in[i / 2] = convert_adc_to_q15(adc_process_ptr[i + 1]);
 	}
 
+	arm_fir_q15(&filter1, &filter1_in[0], &filter1_out[0], BUFFER_SIZE / 2);
+	arm_fir_q15(&filter2, &filter2_in[0], &filter2_out[0], BUFFER_SIZE / 2);
+
 	//Copying the data of one input buffer to the DAC's output buffer to build a passthrough
 	for(uint16_t i = 0; i < BUFFER_SIZE / 2; i++)
 	{
-		dac_process_ptr[i] = convert_q15_to_dac(filter2_in[i]);
+		dac_process_ptr[i] = convert_q15_to_dac(filter1_in[i]);
 	}
 }
 
