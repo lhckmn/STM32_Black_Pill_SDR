@@ -276,7 +276,7 @@ q15_t hilbert_m_45_coeffs[HILBERT_NUM_TAPS] = {
 
 #define CW_NUM_COEFFS 256
 
-q15_t filter_coefficients[CW_NUM_COEFFS] = {
+q15_t cw_filter_coefficients[CW_NUM_COEFFS] = {
     4,
     2,
     -1,

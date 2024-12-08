@@ -40,6 +40,8 @@
 #define BUFFER_SIZE 128
 #define HILBERT_NUM_TAPS 128
 
+#define ADC_MAX 4095
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -65,8 +67,10 @@ static volatile uint16_t* adc_process_ptr;
 static volatile uint16_t* dac_process_ptr;
 static volatile bool adc_process;
 
+int32_t adc_dc_bias = 0;
+
 arm_fir_instance_q15 filter1;
-q15_t filter1_state[(BUFFER_SIZE / 2) + HILBERT_NUM_TAPS - 1];
+q15_t filter1_state[(BUFFER_SIZE / 2) + CW_NUM_COEFFS - 1];
 q15_t filter1_in[BUFFER_SIZE / 2];
 q15_t filter1_out[BUFFER_SIZE / 2];
 
@@ -124,7 +128,7 @@ int main(void)
   //Resetting the flag for processing the ADC buffer
   adc_process = false;
 
-  arm_fir_init_q15(&filter1, HILBERT_NUM_TAPS, &hilbert_p_45_coeffs[0], &filter1_state[0], BUFFER_SIZE / 2);
+  arm_fir_init_q15(&filter1, CW_NUM_COEFFS, &cw_filter_coefficients[0], &filter1_state[0], BUFFER_SIZE / 2);
   arm_fir_init_q15(&filter2, HILBERT_NUM_TAPS, &hilbert_m_45_coeffs[0], &filter2_state[0], BUFFER_SIZE / 2);
 
   /* USER CODE END 1 */
@@ -525,23 +529,36 @@ void process_data()
 	}
 
 	arm_fir_q15(&filter1, &filter1_in[0], &filter1_out[0], BUFFER_SIZE / 2);
-	arm_fir_q15(&filter2, &filter2_in[0], &filter2_out[0], BUFFER_SIZE / 2);
+	//arm_fir_q15(&filter2, &filter2_in[0], &filter2_out[0], BUFFER_SIZE / 2);
 
 	//Copying the data of one input buffer to the DAC's output buffer to build a passthrough
 	for(uint16_t i = 0; i < BUFFER_SIZE / 2; i++)
 	{
-		dac_process_ptr[i] = convert_q15_to_dac(filter1_in[i]);
+		dac_process_ptr[i] = convert_q15_to_dac(filter1_out[i]);
 	}
 }
 
 //Function to convert 12-bit ADC data to q15_t
 q15_t convert_adc_to_q15(uint16_t input) {
-	return (q15_t)((input << 3) - 32768);
+	adc_dc_bias += ((int32_t)input - adc_dc_bias) / 256;
+
+	int32_t centered_value = (int32_t)input - adc_dc_bias;
+	int32_t q15_scaled = (centered_value * Q15_MAX) / (ADC_MAX / 2);
+
+	if (q15_scaled > Q15_MAX) q15_scaled = Q15_MAX;
+	if (q15_scaled < Q15_MIN) q15_scaled = Q15_MIN;
+
+	return (q15_t) q15_scaled;
 }
 
 //Function to convert q15_t to 12-bit DAC data
 uint16_t convert_q15_to_dac(q15_t input) {
-	return (uint16_t)((input + 32768) >> 3);
+	int32_t adc_value = ((int32_t)input * (ADC_MAX / 2)) / Q15_MAX + (ADC_MAX / 2);
+
+	if (adc_value > ADC_MAX) adc_value = ADC_MAX;
+	if (adc_value < 0) adc_value = 0;
+
+	return (uint16_t)adc_value;
 }
 
 /* USER CODE END 4 */
